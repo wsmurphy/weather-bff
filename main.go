@@ -10,7 +10,6 @@ import (
     "time"
 
 	"github.com/gin-gonic/gin"
-    "github.com/russross/blackfriday"
 )
 
 const apiKey = "b4608d4fcb4accac0a8cc2ea6949eeb5"
@@ -59,31 +58,34 @@ type CurrentWeatherData struct {
     Key     string
 }
 
-type Dashboard struct {
-    weatherConditions Weather
+type DashboardResponse struct {
+    WeatherConditions CurrentWeatherData
+		Fact Fact
+		AirQuality AirQuality
 }
 
 type Fact struct {
-    IconUrl string
-    Id      string
-    Url     string
+    IconURL string `json:"IconUrl"`
+    ID      string `json:"Id"`
+    URL     string `json:"Url"`
     Value   string
 }
 
 type AirQuality struct {
     Latitude    float64 `json:"lat"`
     Longitude   float64 `json:"long"`
-    Date_iso    string  `json:"date_iso"`
+    DateIso    string  `json:"date_iso"`
     Date        int     `json:"date"`
     Value       float64 `json:"value"`
 }
 
-func GetWeather(ch chan<-string) {
+//TODO: determine what info is needed and restruct the response to only the necessary info
+func GetWeather(ch chan<-CurrentWeatherData, zip string) {
 
     var weatherResponse CurrentWeatherData
 
     //Todo: take as parms
-    location := "27013,US"
+    location := zip + ",US"
     units := "imperial"
 
     url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, apiKey)
@@ -93,14 +95,14 @@ func GetWeather(ch chan<-string) {
   body, _ := ioutil.ReadAll(resp.Body)
   err := json.Unmarshal(body, &weatherResponse)
   if err == nil {
-      ch <- fmt.Sprintf("Temp: %f \nConditions: %s", weatherResponse.Main.Temp, weatherResponse.Weather[0].Description)
+      ch <- weatherResponse
   } else {
     log.Output(1, "Error " + err.Error())
-      ch <- fmt.Sprintf("Error unmarshalling response")
   }
 }
 
-func GetFact(ch chan<-string) {
+//TODO: Only pass back the info from this response that is actually needed
+func GetFact(ch chan<-Fact) {
 
     var factResponse Fact
 
@@ -111,19 +113,14 @@ func GetFact(ch chan<-string) {
    body, _ := ioutil.ReadAll(resp.Body)
    err := json.Unmarshal(body, &factResponse)
    if err == nil {
-       ch <- fmt.Sprintf("Fact : %s", factResponse.Value)
+       ch <- factResponse
    } else {
     log.Output(1, "Error " + err.Error())
-    ch <- fmt.Sprintf("Error unmarshalling response")
    }
 }
 
-func GetUVIndex(ch chan<-string) {
+func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
     var qualityResponse AirQuality
-
-    //TODO: Get from weather call
-    lat := 35.61
-    long := -80.42    
 
     url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, apiKey)
 
@@ -132,37 +129,55 @@ func GetUVIndex(ch chan<-string) {
     body, _ := ioutil.ReadAll(resp.Body)
     err := json.Unmarshal(body, &qualityResponse)
     if err == nil {
-        log.Output(1, fmt.Sprintf("Response: %f %f", lat, long))
 
-        switch {
-        case qualityResponse.Value < 3.0:
-           ch <- fmt.Sprintf("UV Index : Green")
-        case qualityResponse.Value < 6.0:
-            ch <- fmt.Sprintf("UV Index : Yellow")
-        case qualityResponse.Value < 8.0:
-            ch <- fmt.Sprintf("UV Index : Orange")
-        case qualityResponse.Value < 11.0:
-            ch <- fmt.Sprintf("UV Index : Red")
-        default:
-            ch <- fmt.Sprintf("UV Index : Violet")
-        }
+		ch <- qualityResponse
+
+		//TODO: Map color into response
+		//Business logic should be in this layer, not in the app that calls it
+        // switch {
+        // case qualityResponse.Value < 3.0:
+        //    ch <- fmt.Sprintf("UV Index : Green")
+        // case qualityResponse.Value < 6.0:
+        //     ch <- fmt.Sprintf("UV Index : Yellow")
+        // case qualityResponse.Value < 8.0:
+        //     ch <- fmt.Sprintf("UV Index : Orange")
+        // case qualityResponse.Value < 11.0:
+        //     ch <- fmt.Sprintf("UV Index : Red")
+        // default:
+        //     ch <- fmt.Sprintf("UV Index : Violet")
+        // }
     } else {
        log.Output(1, "Error " + err.Error())
-       ch <- fmt.Sprintf("Error unmarshalling response")
     }
 }
 
 func dashboardHandler(c *gin.Context) {
+		zip := c.Query("zip")
 
-    ch := make(chan string)
-    ch2 := make(chan string)
-    ch3 := make(chan string)
+    ch := make(chan CurrentWeatherData)
+    ch2 := make(chan Fact)
+    ch3 := make(chan AirQuality)
 
-    go GetWeather(ch)
+    go GetWeather(ch, zip)
     go GetFact(ch2)
-    go GetUVIndex(ch3)
 
-    c.String(http.StatusOK, string(blackfriday.MarkdownBasic([]byte(fmt.Sprintf("%s\n%s\n%s", <-ch, <-ch2, <-ch3)))))
+		var weatherResponse = <-ch
+		var lat = weatherResponse.GeoPos.Latitude
+		var long = weatherResponse.GeoPos.Longitude
+
+    go GetUVIndex(ch3, lat, long)
+
+
+		var factResponse = <-ch2
+		var uviResponse = <-ch3
+
+    //TODO: Refine the DashboardResponse to only what the UI needs
+		respJSON := DashboardResponse{WeatherConditions: weatherResponse,
+																	Fact: factResponse,
+																	AirQuality: uviResponse}
+
+	 //TODO: Error handling if one of the responses is nil
+    c.JSON(http.StatusOK, respJSON)
 }
 
 func getIndex(c *gin.Context) {
@@ -179,10 +194,9 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.LoadHTMLGlob("templates/*.tmpl.html")
-	router.Static("/static", "static")
 
 	router.GET("/", getIndex)
-    router.GET("/dashboard", dashboardHandler)
+  router.GET("/dashboard", dashboardHandler)
 
 	router.Run(":" + port)
 }
