@@ -1,12 +1,11 @@
 {
-  "name": "Start on Heroku: Go",
-  "description": "Go Getting Started Example App",
+  "name": "Weather BFF",
+  "description": "A simple BFF serving weather related infor for mobile apps",
   "keywords": [
-    "getting-started",
     "go",
-    "sample",
-    "example"
+    "weather",
+    "bff",
   ],
-  "website": "http://github.com/heroku/go-getting-started",
-  "repository": "http://github.com/heroku/go-getting-started"
+  "website": "https://github.com/wsmurphy/weather-bff"
+  "repository": "https://github.com/wsmurphy/weather-bff"
 }
