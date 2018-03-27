@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const apiKey = "b4608d4fcb4accac0a8cc2ea6949eeb5"
+const openWeatherAPIKey = "b4608d4fcb4accac0a8cc2ea6949eeb5"
 var netClient = &http.Client{
     Timeout: time.Second * 20,
 }
@@ -33,64 +33,58 @@ type Weather struct {
     Icon        string `json:"icon"`
 }
 
-// Main struct contains the temperates, humidity, pressure for the request.
+// Main struct contains the temperatures, humidity, pressure for the request.
 type Main struct {
     Temp      float64 `json:"temp"`
     TempMin   float64 `json:"temp_min"`
     TempMax   float64 `json:"temp_max"`
     Pressure  float64 `json:"pressure"`
-    SeaLevel  float64 `json:"sea_level"`
-    GrndLevel float64 `json:"grnd_level"`
     Humidity  int     `json:"humidity"`
 }
 
 type CurrentWeatherData struct {
     GeoPos  Coordinates `json:"coord"`
-    Base    string      `json:"base"`
     Weather []Weather   `json:"weather"`
     Main    Main        `json:"main"`
     Dt      int         `json:"dt"`
     ID      int         `json:"id"`
     Name    string      `json:"name"`
     Cod     int         `json:"cod"`
-    Unit    string
-    Lang    string
-    Key     string
 }
 
+type WeatherForecast struct {
+	List []CurrentWeatherData `json:"list"`
+}
+
+type Fact struct {
+    Value   string  `json:"value"`
+}
+
+type AirQuality struct {
+    Value       float64 `json:"value"`
+		StringValue string  `json:"stringValue"`
+		ColorValue  string  `json:"colorValue"`
+}
+
+//JSON struct for response to the dashboard endpoint
 type DashboardResponse struct {
     WeatherConditions CurrentWeatherData
 		Fact Fact
 		AirQuality AirQuality
-}
-
-type Fact struct {
-    IconURL string `json:"IconUrl"`
-    ID      string `json:"Id"`
-    URL     string `json:"Url"`
-    Value   string
-}
-
-type AirQuality struct {
-    Latitude    float64 `json:"lat"`
-    Longitude   float64 `json:"long"`
-    DateIso    string  `json:"date_iso"`
-    Date        int     `json:"date"`
-    Value       float64 `json:"value"`
+		WeatherForecast WeatherForecast
 }
 
 //TODO: determine what info is needed and restruct the response to only the necessary info
 func GetWeather(ch chan<-CurrentWeatherData, zip string) {
 
-    var weatherResponse CurrentWeatherData
+  var weatherResponse CurrentWeatherData
 
-    //Todo: take as parms
-    location := zip + ",US"
-    units := "imperial"
+  location := zip + ",US"
+  units := "imperial"
 
-    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, apiKey)
+  url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
 
-    resp, _ := netClient.Get(url)
+  resp, _ := netClient.Get(url)
 
   body, _ := ioutil.ReadAll(resp.Body)
   err := json.Unmarshal(body, &weatherResponse)
@@ -101,7 +95,25 @@ func GetWeather(ch chan<-CurrentWeatherData, zip string) {
   }
 }
 
-//TODO: Only pass back the info from this response that is actually needed
+func GetForecast(ch chan<-WeatherForecast, zip string)  {
+	var forecastResponse WeatherForecast
+
+	location := zip + ",US"
+	units := "imperial"
+
+	url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/forecast?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
+
+	resp, _ := netClient.Get(url)
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	err := json.Unmarshal(body, &forecastResponse)
+	if err == nil {
+			ch <- forecastResponse
+	} else {
+		log.Output(1, "Error " + err.Error())
+	}
+}
+
 func GetFact(ch chan<-Fact) {
 
     var factResponse Fact
@@ -122,7 +134,7 @@ func GetFact(ch chan<-Fact) {
 func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
     var qualityResponse AirQuality
 
-    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, apiKey)
+    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, openWeatherAPIKey)
 
     resp, _ := netClient.Get(url)
 
@@ -130,22 +142,29 @@ func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
     err := json.Unmarshal(body, &qualityResponse)
     if err == nil {
 
-		ch <- qualityResponse
+		//Map color into response. Business logic should be in this layer, not in the app that calls it
+        switch {
+        case qualityResponse.Value < 3.0:
+						qualityResponse.StringValue = "Low"
+						qualityResponse.ColorValue = "Green"
+        case qualityResponse.Value < 6.0:
+					qualityResponse.StringValue = "Moderate"
+					qualityResponse.ColorValue = "Yellow"
+        case qualityResponse.Value < 8.0:
+					qualityResponse.StringValue = "High"
+					qualityResponse.ColorValue = "Orange"
+        case qualityResponse.Value < 11.0:
+					qualityResponse.StringValue = "Very High"
+					qualityResponse.ColorValue = "Red"
+				case qualityResponse.Value >= 11.0:
+					qualityResponse.StringValue = "Extreme"
+					qualityResponse.ColorValue = "Violet"
+        default:
+					qualityResponse.StringValue = "Unknown"
+					qualityResponse.ColorValue = "Blue"
+        }
 
-		//TODO: Map color into response
-		//Business logic should be in this layer, not in the app that calls it
-        // switch {
-        // case qualityResponse.Value < 3.0:
-        //    ch <- fmt.Sprintf("UV Index : Green")
-        // case qualityResponse.Value < 6.0:
-        //     ch <- fmt.Sprintf("UV Index : Yellow")
-        // case qualityResponse.Value < 8.0:
-        //     ch <- fmt.Sprintf("UV Index : Orange")
-        // case qualityResponse.Value < 11.0:
-        //     ch <- fmt.Sprintf("UV Index : Red")
-        // default:
-        //     ch <- fmt.Sprintf("UV Index : Violet")
-        // }
+				ch <- qualityResponse
     } else {
        log.Output(1, "Error " + err.Error())
     }
@@ -157,8 +176,10 @@ func dashboardHandler(c *gin.Context) {
     ch := make(chan CurrentWeatherData)
     ch2 := make(chan Fact)
     ch3 := make(chan AirQuality)
+		ch4 := make(chan WeatherForecast)
 
     go GetWeather(ch, zip)
+		go GetForecast(ch4, zip)
     go GetFact(ch2)
 
 		var weatherResponse = <-ch
@@ -167,14 +188,15 @@ func dashboardHandler(c *gin.Context) {
 
     go GetUVIndex(ch3, lat, long)
 
-
+		var forecastResponse = <-ch4
 		var factResponse = <-ch2
 		var uviResponse = <-ch3
 
     //TODO: Refine the DashboardResponse to only what the UI needs
 		respJSON := DashboardResponse{WeatherConditions: weatherResponse,
 																	Fact: factResponse,
-																	AirQuality: uviResponse}
+																	AirQuality: uviResponse,
+																	WeatherForecast: forecastResponse}
 
 	 //TODO: Error handling if one of the responses is nil
     c.JSON(http.StatusOK, respJSON)
