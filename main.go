@@ -39,44 +39,34 @@ type Main struct {
     TempMin   float64 `json:"temp_min"`
     TempMax   float64 `json:"temp_max"`
     Pressure  float64 `json:"pressure"`
-    SeaLevel  float64 `json:"sea_level"`
-    GrndLevel float64 `json:"grnd_level"`
     Humidity  int     `json:"humidity"`
 }
 
 type CurrentWeatherData struct {
     GeoPos  Coordinates `json:"coord"`
-    Base    string      `json:"base"`
     Weather []Weather   `json:"weather"`
     Main    Main        `json:"main"`
     Dt      int         `json:"dt"`
     ID      int         `json:"id"`
     Name    string      `json:"name"`
     Cod     int         `json:"cod"`
-    Unit    string
-    Lang    string
-    Key     string
 }
 
+type Fact struct {
+    Value   string  `json:"value"`
+}
+
+type AirQuality struct {
+    Value       float64 `json:"value"`
+		StringValue string  `json:"stringValue"`
+		ColorValue  string  `json:"colorValue"`
+}
+
+//JSON struct for response to the dashboard endpoint
 type DashboardResponse struct {
     WeatherConditions CurrentWeatherData
 		Fact Fact
 		AirQuality AirQuality
-}
-
-type Fact struct {
-    IconURL string `json:"IconUrl"`
-    ID      string `json:"Id"`
-    URL     string `json:"Url"`
-    Value   string
-}
-
-type AirQuality struct {
-    Latitude    float64 `json:"lat"`
-    Longitude   float64 `json:"long"`
-    DateIso    string  `json:"date_iso"`
-    Date        int     `json:"date"`
-    Value       float64 `json:"value"`
 }
 
 //TODO: determine what info is needed and restruct the response to only the necessary info
@@ -130,22 +120,29 @@ func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
     err := json.Unmarshal(body, &qualityResponse)
     if err == nil {
 
-		ch <- qualityResponse
+		//Map color into response. Business logic should be in this layer, not in the app that calls it
+        switch {
+        case qualityResponse.Value < 3.0:
+						qualityResponse.StringValue = "Low"
+						qualityResponse.ColorValue = "Green"
+        case qualityResponse.Value < 6.0:
+					qualityResponse.StringValue = "Moderate"
+					qualityResponse.ColorValue = "Yellow"
+        case qualityResponse.Value < 8.0:
+					qualityResponse.StringValue = "High"
+					qualityResponse.ColorValue = "Orange"
+        case qualityResponse.Value < 11.0:
+					qualityResponse.StringValue = "Very High"
+					qualityResponse.ColorValue = "Red"
+				case qualityResponse.Value >= 11.0:
+					qualityResponse.StringValue = "Extreme"
+					qualityResponse.ColorValue = "Violet"
+        default:
+					qualityResponse.StringValue = "Unknown"
+					qualityResponse.ColorValue = "Blue"
+        }
 
-		//TODO: Map color into response
-		//Business logic should be in this layer, not in the app that calls it
-        // switch {
-        // case qualityResponse.Value < 3.0:
-        //    ch <- fmt.Sprintf("UV Index : Green")
-        // case qualityResponse.Value < 6.0:
-        //     ch <- fmt.Sprintf("UV Index : Yellow")
-        // case qualityResponse.Value < 8.0:
-        //     ch <- fmt.Sprintf("UV Index : Orange")
-        // case qualityResponse.Value < 11.0:
-        //     ch <- fmt.Sprintf("UV Index : Red")
-        // default:
-        //     ch <- fmt.Sprintf("UV Index : Violet")
-        // }
+				ch <- qualityResponse
     } else {
        log.Output(1, "Error " + err.Error())
     }
