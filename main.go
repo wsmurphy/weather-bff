@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const apiKey = "b4608d4fcb4accac0a8cc2ea6949eeb5"
+const openWeatherAPIKey = "b4608d4fcb4accac0a8cc2ea6949eeb5"
 var netClient = &http.Client{
     Timeout: time.Second * 20,
 }
@@ -78,7 +78,7 @@ func GetWeather(ch chan<-CurrentWeatherData, zip string) {
     location := zip + ",US"
     units := "imperial"
 
-    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, apiKey)
+    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
 
     resp, _ := netClient.Get(url)
 
@@ -112,7 +112,7 @@ func GetFact(ch chan<-Fact) {
 func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
     var qualityResponse AirQuality
 
-    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, apiKey)
+    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, openWeatherAPIKey)
 
     resp, _ := netClient.Get(url)
 
