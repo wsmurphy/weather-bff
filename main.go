@@ -33,7 +33,7 @@ type Weather struct {
     Icon        string `json:"icon"`
 }
 
-// Main struct contains the temperates, humidity, pressure for the request.
+// Main struct contains the temperatures, humidity, pressure for the request.
 type Main struct {
     Temp      float64 `json:"temp"`
     TempMin   float64 `json:"temp_min"`
@@ -52,6 +52,10 @@ type CurrentWeatherData struct {
     Cod     int         `json:"cod"`
 }
 
+type WeatherForecast struct {
+	List []CurrentWeatherData `json:"list"`
+}
+
 type Fact struct {
     Value   string  `json:"value"`
 }
@@ -67,20 +71,20 @@ type DashboardResponse struct {
     WeatherConditions CurrentWeatherData
 		Fact Fact
 		AirQuality AirQuality
+		WeatherForecast WeatherForecast
 }
 
 //TODO: determine what info is needed and restruct the response to only the necessary info
 func GetWeather(ch chan<-CurrentWeatherData, zip string) {
 
-    var weatherResponse CurrentWeatherData
+  var weatherResponse CurrentWeatherData
 
-    //Todo: take as parms
-    location := zip + ",US"
-    units := "imperial"
+  location := zip + ",US"
+  units := "imperial"
 
-    url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
+  url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/weather?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
 
-    resp, _ := netClient.Get(url)
+  resp, _ := netClient.Get(url)
 
   body, _ := ioutil.ReadAll(resp.Body)
   err := json.Unmarshal(body, &weatherResponse)
@@ -91,7 +95,25 @@ func GetWeather(ch chan<-CurrentWeatherData, zip string) {
   }
 }
 
-//TODO: Only pass back the info from this response that is actually needed
+func GetForecast(ch chan<-WeatherForecast, zip string)  {
+	var forecastResponse WeatherForecast
+
+	location := zip + ",US"
+	units := "imperial"
+
+	url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/forecast?zip=%s&units=%s&APPID=%s", location, units, openWeatherAPIKey)
+
+	resp, _ := netClient.Get(url)
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	err := json.Unmarshal(body, &forecastResponse)
+	if err == nil {
+			ch <- forecastResponse
+	} else {
+		log.Output(1, "Error " + err.Error())
+	}
+}
+
 func GetFact(ch chan<-Fact) {
 
     var factResponse Fact
@@ -154,8 +176,10 @@ func dashboardHandler(c *gin.Context) {
     ch := make(chan CurrentWeatherData)
     ch2 := make(chan Fact)
     ch3 := make(chan AirQuality)
+		ch4 := make(chan WeatherForecast)
 
     go GetWeather(ch, zip)
+		go GetForecast(ch4, zip)
     go GetFact(ch2)
 
 		var weatherResponse = <-ch
@@ -164,14 +188,15 @@ func dashboardHandler(c *gin.Context) {
 
     go GetUVIndex(ch3, lat, long)
 
-
+		var forecastResponse = <-ch4
 		var factResponse = <-ch2
 		var uviResponse = <-ch3
 
     //TODO: Refine the DashboardResponse to only what the UI needs
 		respJSON := DashboardResponse{WeatherConditions: weatherResponse,
 																	Fact: factResponse,
-																	AirQuality: uviResponse}
+																	AirQuality: uviResponse,
+																	WeatherForecast: forecastResponse}
 
 	 //TODO: Error handling if one of the responses is nil
     c.JSON(http.StatusOK, respJSON)
