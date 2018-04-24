@@ -60,7 +60,7 @@ type Fact struct {
     Value   string  `json:"value"`
 }
 
-type AirQuality struct {
+type UVIndex struct {
     Value       float64 `json:"value"`
 		StringValue string  `json:"stringValue"`
 		ColorValue  string  `json:"colorValue"`
@@ -70,12 +70,12 @@ type AirQuality struct {
 type DashboardResponse struct {
     WeatherConditions CurrentWeatherData
 		Fact Fact
-		AirQuality AirQuality
+		UVIndex UVIndex
 		WeatherForecast WeatherForecast
 }
 
 //TODO: determine what info is needed and restruct the response to only the necessary info
-func GetWeather(ch chan<-CurrentWeatherData, zip string) {
+func GetWeather(ch chan<-CurrentWeatherData, ch3 chan<-UVIndex, zip string) {
 
   var weatherResponse CurrentWeatherData
 
@@ -89,7 +89,10 @@ func GetWeather(ch chan<-CurrentWeatherData, zip string) {
   body, _ := ioutil.ReadAll(resp.Body)
   err := json.Unmarshal(body, &weatherResponse)
   if err == nil {
-      ch <- weatherResponse
+			  //This is dependent, so kick it off once we have the lat\longitude
+				//Probably not the best place.
+				go GetUVIndex(ch3, weatherResponse.GeoPos.Latitude, weatherResponse.GeoPos.Longitude)
+      	ch <- weatherResponse
   } else {
     log.Output(1, "Error " + err.Error())
   }
@@ -131,8 +134,8 @@ func GetFact(ch chan<-Fact) {
    }
 }
 
-func GetUVIndex(ch chan<-AirQuality, lat float64, long float64) {
-    var qualityResponse AirQuality
+func GetUVIndex(ch chan<-UVIndex, lat float64, long float64) {
+    var qualityResponse UVIndex
 
     url := fmt.Sprintf("http://api.openweathermap.org/data/2.5/uvi?lat=%f&lon=%f&APPID=%s", lat, long, openWeatherAPIKey)
 
@@ -175,19 +178,14 @@ func dashboardHandler(c *gin.Context) {
 
     ch := make(chan CurrentWeatherData)
     ch2 := make(chan Fact)
-    ch3 := make(chan AirQuality)
+    ch3 := make(chan UVIndex)
 		ch4 := make(chan WeatherForecast)
 
-    go GetWeather(ch, zip)
+    go GetWeather(ch, ch3, zip)
 		go GetForecast(ch4, zip)
     go GetFact(ch2)
 
 		var weatherResponse = <-ch
-		var lat = weatherResponse.GeoPos.Latitude
-		var long = weatherResponse.GeoPos.Longitude
-
-    go GetUVIndex(ch3, lat, long)
-
 		var forecastResponse = <-ch4
 		var factResponse = <-ch2
 		var uviResponse = <-ch3
@@ -195,7 +193,7 @@ func dashboardHandler(c *gin.Context) {
     //TODO: Refine the DashboardResponse to only what the UI needs
 		respJSON := DashboardResponse{WeatherConditions: weatherResponse,
 																	Fact: factResponse,
-																	AirQuality: uviResponse,
+																	UVIndex: uviResponse,
 																	WeatherForecast: forecastResponse}
 
 	 //TODO: Error handling if one of the responses is nil
