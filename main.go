@@ -95,6 +95,8 @@ func GetWeather(ch chan<-CurrentWeatherData, ch3 chan<-UVIndex, zip string) {
       	ch <- weatherResponse
   } else {
     log.Output(1, "Error " + err.Error())
+		close(ch)
+		close(ch3)
   }
 }
 
@@ -114,6 +116,7 @@ func GetForecast(ch chan<-WeatherForecast, zip string)  {
 			ch <- forecastResponse
 	} else {
 		log.Output(1, "Error " + err.Error())
+		close(ch)
 	}
 }
 
@@ -170,6 +173,7 @@ func GetUVIndex(ch chan<-UVIndex, lat float64, long float64) {
 				ch <- qualityResponse
     } else {
        log.Output(1, "Error " + err.Error())
+			 close(ch)
     }
 }
 
@@ -190,14 +194,18 @@ func dashboardHandler(c *gin.Context) {
 		var factResponse = <-ch2
 		var uviResponse = <-ch3
 
-    //TODO: Refine the DashboardResponse to only what the UI needs
-		respJSON := DashboardResponse{WeatherConditions: weatherResponse,
-																	Fact: factResponse,
-																	UVIndex: uviResponse,
-																	WeatherForecast: forecastResponse}
+		//TODO: Proper error handling if one of the responses is nil
+		//This is probably bare minimum
+		if weatherResponse.Cod == 200 {
+			respJSON := DashboardResponse{WeatherConditions: weatherResponse,
+																		Fact: factResponse,
+																		UVIndex: uviResponse,
+																		WeatherForecast: forecastResponse}
 
-	 //TODO: Error handling if one of the responses is nil
-    c.JSON(http.StatusOK, respJSON)
+	    c.JSON(http.StatusOK, respJSON)
+		} else {
+      c.JSON(http.StatusBadRequest, "")
+		}
 }
 
 func getIndex(c *gin.Context) {
