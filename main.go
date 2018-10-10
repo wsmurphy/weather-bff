@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -123,16 +124,18 @@ func GetForecast(ch chan<- WeatherForecast, zip string) {
 
 func GetFact(ch chan<- Fact) {
 
-	var factResponse Fact
+	var factResponse []Fact
 
-	url := "https://api.chucknorris.io/jokes/random?category=science"
+	url := "https://api.chucknorris.io/jokes/search?query=weather"
 
 	resp, _ := netClient.Get(url)
 
 	body, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(body, &factResponse)
 	if err == nil {
-		ch <- factResponse
+		var random = rand.Intn(len(factResponse))
+
+		ch <- factResponse[random]
 	} else {
 		log.Output(1, "Error "+err.Error())
 	}
